@@ -40,6 +40,10 @@ class Handler extends Tracker\Handler
 
     public function process(Tracker $tracker, RequestSet $requestSet)
     {
+        /** @var Response $response */
+        $response = $this->getResponse();
+        $response->setIsAuthenticated($requestSet->isAuthenticated());
+
         $invalidRequests = array();
         foreach ($requestSet->getRequests() as $index => $request) {
             try {
@@ -49,8 +53,6 @@ class Handler extends Tracker\Handler
             }
         }
 
-        /** @var Response $response */
-        $response = $this->getResponse();
         $response->setInvalidRequests($invalidRequests);
     }
 

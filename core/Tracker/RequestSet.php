@@ -264,6 +264,11 @@ class RequestSet
         );
     }
 
+    public function isAuthenticated()
+    {
+        return $this->authResult->getCode() != AuthResult::FAILURE;
+    }
+
     protected function authenticateTrackerRequest($tokenAuth)
     {
         if (empty($tokenAuth)) {
