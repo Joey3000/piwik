@@ -8,7 +8,9 @@
  */
 namespace Piwik\Tracker;
 
+use Piwik\AuthResult;
 use Piwik\Common;
+use Piwik\Container\StaticContainer;
 use Piwik\Piwik;
 use Piwik\Plugins\SitesManager\SiteUrls;
 use Piwik\Url;
@@ -33,6 +35,8 @@ class RequestSet
 
     public function setRequests($requests)
     {
+        $this->authResult = $this->authenticateTrackerRequest($this->getTokenAuth());
+
         $this->requests = array();
 
         foreach ($requests as $request) {
@@ -44,9 +48,16 @@ class RequestSet
                 $request = new Request($request, $this->getTokenAuth());
             }
 
+            $request->setRequestAuth($this->authResult);
+
             $this->requests[] = $request;
         }
     }
+
+    /**
+     * @var AuthResult
+     */
+    private $authResult = null;
 
     public function setTokenAuth($tokenAuth)
     {
@@ -251,5 +262,32 @@ class RequestSet
         return array(
             'server' => $_SERVER
         );
+    }
+
+    protected function authenticateTrackerRequest($tokenAuth)
+    {
+        if (empty($tokenAuth)) {
+            return null;
+        }
+
+        if (!$this->isAuthenticationRequired()) {
+            return null;
+        }
+
+        Piwik::postEvent('Request.initAuthenticationObject');
+
+        /** @var \Piwik\Auth $auth */
+        $auth = StaticContainer::get('Piwik\Auth');
+        $auth->setTokenAuth($tokenAuth);
+        $auth->setLogin(null);
+        $auth->setPassword(null);
+        $auth->setPasswordHash(null);
+        return $auth->authenticate();
+    }
+
+    protected function isAuthenticationRequired()
+    {
+        $shouldAuthenticate = TrackerConfig::getConfigValue('tracking_requests_require_authentication');
+        return (bool)$shouldAuthenticate;
     }
 }

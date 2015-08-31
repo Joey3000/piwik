@@ -25,13 +25,15 @@ class Requests
 
     /**
      * @param Request[] $requests
+     * @param string $token
      * @throws Exception
+     * @throws \Piwik\Exception\UnexpectedWebsiteFoundException
      */
-    public function authenticateRequests($requests)
+    public function authenticateRequests($requests, $token)
     {
-        foreach ($requests as $request) {
-            $this->checkTokenAuthNotEmpty($request->getTokenAuth());
+        $this->checkTokenAuthNotEmpty($token);
 
+        foreach ($requests as $request) {
             if (!$request->isAuthenticated()) {
                 $msg = sprintf("token_auth specified does not have Admin permission for idsite=%s", $request->getIdSite());
                 throw new Exception($msg);

@@ -42,15 +42,15 @@ class BulkTracking extends \Piwik\Plugin
 
             list($requests, $token) = $bulk->initRequestsAndTokenAuth($bulk->getRawBulkRequest());
 
-            if ($bulk->requiresAuthentication()) {
-                $bulk->authenticateRequests($requests);
-            }
-
             if (!$requestSet->getTokenAuth()) {
                 $requestSet->setTokenAuth($token);
             }
 
             $requestSet->setRequests($requests);
+
+            if ($bulk->requiresAuthentication()) {
+                $bulk->authenticateRequests($requests, $token);
+            }
         }
     }
 

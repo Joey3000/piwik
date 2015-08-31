@@ -9,6 +9,7 @@
 namespace Piwik\Tracker;
 
 use Exception;
+use Piwik\AuthResult;
 use Piwik\Common;
 use Piwik\Config;
 use Piwik\Container\StaticContainer;
@@ -41,8 +42,6 @@ class Request
     protected $isAuthenticated = null;
     private $isEmptyRequest = false;
 
-    protected $tokenAuth;
-
     /**
      * Stores plugin specific tracking request metadata. RequestProcessors can store
      * whatever they want in this array, and other RequestProcessors can modify these
@@ -52,6 +51,11 @@ class Request
      */
     private $requestMetadata = array();
 
+    /**
+     * @var AuthResult
+     */
+    private $authResult = null;
+
     const UNKNOWN_RESOLUTION = 'unknown';
 
     const CUSTOM_TIMESTAMP_DOES_NOT_REQUIRE_TOKENAUTH_WHEN_NEWER_THAN = 14400; // 4 hours
@@ -60,14 +64,13 @@ class Request
      * @param $params
      * @param bool|string $tokenAuth
      */
-    public function __construct($params, $tokenAuth = false)
+    public function __construct($params)
     {
         if (!is_array($params)) {
             $params = array();
         }
         $this->params = $params;
         $this->rawParams = $params;
-        $this->tokenAuth = $tokenAuth;
         $this->timestamp = time();
         $this->isEmptyRequest = empty($params);
 
@@ -95,18 +98,13 @@ class Request
         return $this->rawParams;
     }
 
-    public function getTokenAuth()
-    {
-        return $this->tokenAuth;
-    }
-
     /**
      * @return bool
      */
     public function isAuthenticated()
     {
         if (is_null($this->isAuthenticated)) {
-            $this->authenticateTrackingApi($this->tokenAuth);
+            $this->authenticateTrackingApi();
         }
 
         return $this->isAuthenticated;
@@ -116,7 +114,7 @@ class Request
      * This method allows to set custom IP + server time + visitor ID, when using Tracking API.
      * These two attributes can be only set by the Super User (passing token_auth).
      */
-    protected function authenticateTrackingApi($tokenAuth)
+    protected function authenticateTrackingApi()
     {
         $shouldAuthenticate = TrackerConfig::getConfigValue('tracking_requests_require_authentication');
 
@@ -128,12 +126,8 @@ class Request
                 return;
             }
 
-            if (empty($tokenAuth)) {
-                $tokenAuth = Common::getRequestVar('token_auth', false, 'string', $this->params);
-            }
-
             $cache = PiwikCache::getTransientCache();
-            $cacheKey = 'tracker_request_authentication_' . $idSite . '_' . $tokenAuth;
+            $cacheKey = 'tracker_request_authentication_' . $idSite;
 
             if ($cache->contains($cacheKey)) {
                 Common::printDebug("token_auth is authenticated in cache!");
@@ -142,7 +136,7 @@ class Request
             }
 
             try {
-                $this->isAuthenticated = self::authenticateSuperUserOrAdmin($tokenAuth, $idSite);
+                $this->isAuthenticated = self::authenticateSuperUserOrAdmin($idSite, $this->authResult);
                 $cache->save($cacheKey, $this->isAuthenticated);
             } catch (Exception $e) {
                 Common::printDebug("could not authenticate, caught exception: " . $e->getMessage());
@@ -159,23 +153,13 @@ class Request
         }
     }
 
-    public static function authenticateSuperUserOrAdmin($tokenAuth, $idSite)
+    public static function authenticateSuperUserOrAdmin($idSite, AuthResult $access = null)
     {
-        if (empty($tokenAuth)) {
+        if (empty($access)) {
             return false;
         }
 
-        Piwik::postEvent('Request.initAuthenticationObject');
-
-        /** @var \Piwik\Auth $auth */
-        $auth = StaticContainer::get('Piwik\Auth');
-        $auth->setTokenAuth($tokenAuth);
-        $auth->setLogin(null);
-        $auth->setPassword(null);
-        $auth->setPasswordHash(null);
-        $access = $auth->authenticate();
-
-        if (!empty($access) && $access->hasSuperUserAccess()) {
+        if ($access->hasSuperUserAccess()) {
             return true;
         }
 
@@ -183,12 +167,12 @@ class Request
         if (!empty($idSite) && $idSite > 0) {
             $website = Cache::getCacheWebsiteAttributes($idSite);
 
-            if (array_key_exists('admin_token_auth', $website) && in_array((string) $tokenAuth, $website['admin_token_auth'])) {
+            if (array_key_exists('admin_token_auth', $website) && in_array((string) $access->getTokenAuth(), $website['admin_token_auth'])) {
                 return true;
             }
         }
 
-        Common::printDebug("WARNING! token_auth = $tokenAuth is not valid, Super User / Admin was NOT authenticated");
+        Common::printDebug("WARNING! token_auth = {$access->getTokenAuth()} is not valid, Super User / Admin was NOT authenticated");
 
         return false;
     }
@@ -796,5 +780,10 @@ class Request
     public function getMetadata($pluginName, $key)
     {
         return isset($this->requestMetadata[$pluginName][$key]) ? $this->requestMetadata[$pluginName][$key] : null;
+    }
+
+    public function setRequestAuth(AuthResult $authResult = null)
+    {
+        $this->authResult = $authResult;
     }
 }
