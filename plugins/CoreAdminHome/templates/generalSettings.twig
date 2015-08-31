@@ -73,20 +73,32 @@
         <h2>{{ 'CoreAdminHome_UpdateSettings'|translate }}</h2>
 
         <div class="form-group">
-            <label>{{ 'CoreAdminHome_CheckReleaseGetVersion'|translate }}</label>
+            <label>{{ 'CoreAdminHome_ReleaseChannel'|translate }}</label>
             <div class="form-help">
                 {{ 'CoreAdminHome_DevelopmentProcess'|translate("<a href='?module=Proxy&action=redirect&url=http://piwik.org/participate/development-process/' target='_blank'>","</a>")|raw }}
                 <br/>
                 {{ 'CoreAdminHome_StableReleases'|translate("<a href='?module=Proxy&action=redirect&url=http%3A%2F%2Fdeveloper.piwik.org%2Fguides%2Fcore-team-workflow%23influencing-piwik-development' target='_blank'>","</a>")|raw }}
+                <br />
+                {{ 'CoreAdminHome_LtsReleases'|translate }}
             </div>
             <label class="radio">
-                <input type="radio" value="1" name="enableBetaReleaseCheck"{% if enableBetaReleaseCheck==1 %} checked="checked"{% endif %} />
-                {{ 'General_Yes'|translate }}
+                <input type="radio" value="latest_stable" name="releaseChannel"{% if releaseChannel=='latest_stable' %} checked="checked"{% endif %} />
+                {{ 'CoreAdminHome_LatestStableRelease'|translate }}
+                <span class="form-description">{{ 'General_Recommended'|translate }}</span>
             </label>
             <label class="radio">
-                <input type="radio" value="0" name="enableBetaReleaseCheck"{% if enableBetaReleaseCheck==0 %} checked="checked"{% endif %} />
-                {{ 'General_No'|translate }}
-                <span class="form-description">{{ 'General_Recommended'|translate }}</span>
+                <input type="radio" value="latest_beta" name="releaseChannel"{% if releaseChannel=='latest_beta' %} checked="checked"{% endif %} />
+                {{ 'CoreAdminHome_LatestBetaRelease'|translate }}
+            </label>
+            <label class="radio">
+                <input type="radio" value="2x_stable" name="releaseChannel"{% if releaseChannel=='2x_stable' %} checked="checked"{% endif %} />
+                {{ 'CoreAdminHome_Latest2XStableRelease'|translate }}
+                <span class="form-description">{{ 'CoreAdminHome_LtsSupportVersion'|translate }}</span>
+            </label>
+            <label class="radio">
+                <input type="radio" value="2x_beta" name="releaseChannel"{% if releaseChannel=='2x_beta' %} checked="checked"{% endif %} />
+                {{ 'CoreAdminHome_Latest2XBetaRelease'|translate }}
+                <span class="form-description">{{ 'CoreAdminHome_LtsSupportVersion'|translate }}</span>
             </label>
         </div>
 

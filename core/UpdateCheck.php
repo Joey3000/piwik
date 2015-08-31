@@ -23,9 +23,62 @@ class UpdateCheck
     const LATEST_VERSION = 'UpdateCheck_LatestVersion';
     const SOCKET_TIMEOUT = 2;
 
+    const RELEASE_CHANNEL_LATEST_STABLE = 'latest_stable';
+    const RELEASE_CHANNEL_LATEST_BETA   = 'latest_beta';
+    const RELEASE_CHANNEL_2X_STABLE     = '2x_stable';
+    const RELEASE_CHANNEL_2X_BETA       = '2x_beta';
+    const RELEASE_CHANNEL_DEFAULT       = self::RELEASE_CHANNEL_LATEST_STABLE;
+
+    const LATEST_VERSION_URL = '://builds.piwik.org/piwik.zip';
+    const LATEST_BETA_VERSION_URL = '://builds.piwik.org/piwik-%s.zip';
+    const LATEST_2X_VERSION_URL = '://builds.piwik.org/piwik2x.zip';
+    const LATEST_2X_BETA_VERSION_URL = '://builds.piwik.org/piwik2x-%s.zip';
+
     private static function isAutoUpdateEnabled()
     {
         return (bool) Config::getInstance()->General['enable_auto_update'];
+    }
+
+    private static function getReleaseChannel()
+    {
+        $channel = @Config::getInstance()->General['release_channel'];
+
+        if (!self::isValidReleaseChannel($channel)) {
+            return self::RELEASE_CHANNEL_DEFAULT;
+        }
+
+        return $channel;
+    }
+
+    public static function getPiwikArchiveUrlForCurrentReleaseChannel($version)
+    {
+        $channel = self::getReleaseChannel();
+
+        switch ($channel) {
+            case self::RELEASE_CHANNEL_LATEST_BETA:
+                return sprintf(self::LATEST_BETA_VERSION_URL, $version);
+
+            case self::RELEASE_CHANNEL_2X_STABLE:
+                return self::LATEST_2X_VERSION_URL;
+
+            case self::RELEASE_CHANNEL_2X_BETA:
+                return sprintf(self::LATEST_2X_BETA_VERSION_URL, $version);
+
+            case self::RELEASE_CHANNEL_LATEST_STABLE:
+            default:
+                return self::LATEST_VERSION_URL;
+
+        }
+    }
+
+    public static function isValidReleaseChannel($releaseChannel)
+    {
+        return in_array($releaseChannel, array(
+            self::RELEASE_CHANNEL_LATEST_STABLE,
+            self::RELEASE_CHANNEL_LATEST_BETA,
+            self::RELEASE_CHANNEL_2X_STABLE,
+            self::RELEASE_CHANNEL_2X_BETA,
+        ));
     }
 
     /**
@@ -51,22 +104,9 @@ class UpdateCheck
         ) {
             // set the time checked first, so that parallel Piwik requests don't all trigger the http requests
             Option::set(self::LAST_TIME_CHECKED, time(), $autoLoad = 1);
-            $parameters = array(
-                'piwik_version' => Version::VERSION,
-                'php_version'   => PHP_VERSION,
-                'url'           => Url::getCurrentUrlWithoutQueryString(),
-                'trigger'       => Common::getRequestVar('module', '', 'string'),
-                'timezone'      => API::getInstance()->getDefaultTimezone(),
-            );
 
-            $url = Config::getInstance()->General['api_service_url']
-                . '/1.0/getLatestVersion/'
-                . '?' . http_build_query($parameters, '', '&');
+            $url = self::getUrlToCheckForLatestAvailableVersion();
             $timeout = self::SOCKET_TIMEOUT;
-
-            if (@Config::getInstance()->Debug['allow_upgrades_to_beta']) {
-                $url = 'http://builds.piwik.org/LATEST_BETA';
-            }
 
             try {
                 $latestVersion = Http::sendHttpRequest($url, $timeout);
@@ -78,6 +118,38 @@ class UpdateCheck
                 $latestVersion = '';
             }
             Option::set(self::LATEST_VERSION, $latestVersion);
+        }
+    }
+
+    private static function getUrlToCheckForLatestAvailableVersion()
+    {
+        $releaseChannel = self::getReleaseChannel();
+
+        $parameters = array(
+            'piwik_version'   => Version::VERSION,
+            'php_version'     => PHP_VERSION,
+            'release_channel' => $releaseChannel,
+            'url'             => Url::getCurrentUrlWithoutQueryString(),
+            'trigger'         => Common::getRequestVar('module', '', 'string'),
+            'timezone'        => API::getInstance()->getDefaultTimezone(),
+        );
+
+        $url = Config::getInstance()->General['api_service_url']
+            . '/1.0/getLatestVersion/'
+            . '?' . http_build_query($parameters, '', '&');
+
+        switch ($releaseChannel) {
+            case self::RELEASE_CHANNEL_2X_BETA:
+                return 'http://builds.piwik.org/LATEST_2X_BETA';
+
+            case self::RELEASE_CHANNEL_LATEST_BETA:
+                return 'http://builds.piwik.org/LATEST_BETA';
+
+            case self::RELEASE_CHANNEL_LATEST_STABLE:
+            case self::RELEASE_CHANNEL_2X_STABLE:
+            default:
+                return $url;
+
         }
     }
 

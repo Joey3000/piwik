@@ -29,6 +29,7 @@ use Piwik\Settings\SystemSetting;
 use Piwik\Settings\UserSetting;
 use Piwik\Site;
 use Piwik\Translation\Translator;
+use Piwik\UpdateCheck;
 use Piwik\Url;
 use Piwik\View;
 
@@ -356,9 +357,12 @@ class Controller extends ControllerAdmin
         Rules::setTodayArchiveTimeToLive($todayArchiveTimeToLive);
 
         // update beta channel setting
-        $debug = Config::getInstance()->Debug;
-        $debug['allow_upgrades_to_beta'] = Common::getRequestVar('enableBetaReleaseCheck', '0', 'int');
-        Config::getInstance()->Debug = $debug;
+        $general = Config::getInstance()->General;
+        $general['release_channel'] = Common::getRequestVar('releaseChannel', '', 'string');
+        if (!UpdateCheck::isValidReleaseChannel($general['release_channel'])) {
+            $general['release_channel'] = UpdateCheck::RELEASE_CHANNEL_DEFAULT;
+        }
+        Config::getInstance()->General = $general;
 
         // Update email settings
         $mail = array();
@@ -409,7 +413,7 @@ class Controller extends ControllerAdmin
         $view->todayArchiveTimeToLiveDefault = Rules::getTodayArchiveTimeToLiveDefault();
         $view->enableBrowserTriggerArchiving = $enableBrowserTriggerArchiving;
 
-        $view->enableBetaReleaseCheck = Config::getInstance()->Debug['allow_upgrades_to_beta'];
+        $view->releaseChannel = Config::getInstance()->General['release_channel'];
         $view->mail = Config::getInstance()->mail;
 
         $pluginUpdateCommunication = new UpdateCommunication();
