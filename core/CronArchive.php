@@ -208,7 +208,10 @@ class CronArchive
 
     private $websitesWithVisitsSinceLastRun = 0;
     private $skippedPeriodsArchivesWebsite = 0;
+    private $skippedPeriodsNoDataInPeriod = 0;
     private $skippedDayArchivesWebsites = 0;
+    private $skippedDayNoRecentData = 0;
+    private $skippedDayOnApiError = 0;
     private $skipped = 0;
     private $processed = 0;
     private $archivedPeriodsArchivesWebsite = 0;
@@ -277,6 +280,15 @@ class CronArchive
 
     public function init()
     {
+        /**
+         * This event is triggered during initializing archiving.
+         *
+         * @param CronArchive $this
+         */
+        Piwik::postEvent('CoreArchive.run.start', array($this));
+
+        SettingsServer::setMaxExecutionTime(0);
+
         $this->archivingStartingTime = time();
 
         // Note: the order of methods call matters here.
@@ -357,17 +369,23 @@ class CronArchive
                 // to process the archives for this website (only if there were visits since midnight)
                 if (!$hasWebsiteDayFinishedSinceLastRun && !$isOldReportInvalidatedForWebsite) {
 
-                    if ($this->isWebsiteUsingTheTracker($idSite) &&
-                        !$this->hadWebsiteTrafficSinceMidnightInTimezone($idSite)) {
-                        $this->logger->info("Will skip site $idSite as archiving is not needed");
-                        $this->skipped++;
-                        continue;
+                    if ($this->isWebsiteUsingTheTracker($idSite)) {
+
+                        if(!$this->hadWebsiteTrafficSinceMidnightInTimezone($idSite)) {
+                            $this->logger->info("Skipped website id $idSite as archiving is not needed");
+
+                            $this->skippedDayNoRecentData++;
+                            $this->skipped++;
+                            continue;
+                        }
+                    } else {
+                       $this->logger->info("- website id $idSite is not using the tracker");
                     }
 
                 } elseif ($hasWebsiteDayFinishedSinceLastRun) {
-                    $this->logger->info("Day has finished for website $idSite since last run");
+                    $this->logger->info("Day has finished for website id $idSite since last run");
                 } elseif ($isOldReportInvalidatedForWebsite) {
-                    $this->logger->info("Old report was invalidated for website $idSite");
+                    $this->logger->info("Old report was invalidated for website id $idSite");
                 }
             }
 
@@ -399,9 +417,18 @@ class CronArchive
         $this->skipped = $totalWebsites - $this->websitesWithVisitsSinceLastRun;
         $this->logger->info("Archived today's reports for {$this->websitesWithVisitsSinceLastRun} websites");
         $this->logger->info("Archived week/month/year for {$this->archivedPeriodsArchivesWebsite} websites");
-        $this->logger->info("Skipped {$this->skipped} websites: no new visit since the last script execution");
-        $this->logger->info("Skipped {$this->skippedDayArchivesWebsites} websites day archiving: existing daily reports are less than {$this->todayArchiveTimeToLive} seconds old");
-        $this->logger->info("Skipped {$this->skippedPeriodsArchivesWebsite} websites week/month/year archiving: existing periods reports are less than {$this->processPeriodsMaximumEverySeconds} seconds old");
+        $this->logger->info("Skipped {$this->skipped} websites");
+        $this->logger->info("- {$this->skippedDayNoRecentData} skipped because no new visit since the last script execution");
+        $this->logger->info("- {$this->skippedDayArchivesWebsites} skipped because existing daily reports are less than {$this->todayArchiveTimeToLive} seconds old");
+        $this->logger->info("- {$this->skippedPeriodsArchivesWebsite} skipped because existing week/month/year periods reports are less than {$this->processPeriodsMaximumEverySeconds} seconds old");
+
+        if($this->skippedPeriodsNoDataInPeriod) {
+            $this->logger->info("- {$this->skippedPeriodsNoDataInPeriod} skipped periods archiving because no visit in recent days");
+        }
+
+        if($this->skippedDayOnApiError) {
+            $this->logger->info("- {$this->skippedDayOnApiError} skipped because got an error while querying reporting API");
+        }
         $this->logger->info("Total API requests: {$this->requests}");
 
         //DONE: done/total, visits, wtoday, wperiods, reqs, time, errors[count]: first eg.
@@ -416,6 +443,7 @@ class CronArchive
                 ? self::NO_ERROR
                 : (count($this->errors) . " errors."))
         );
+
         $this->logger->info($timer->__toString());
     }
 
@@ -438,6 +466,13 @@ class CronArchive
 
         $summary = count($this->errors) . " total errors during this script execution, please investigate and try and fix these errors.";
         $this->logFatalError($summary);
+
+        /**
+         * This event is triggered after archiving.
+         *
+         * @param CronArchive $this
+         */
+        Piwik::postEvent('CoreArchive.run.finish', array($this));
     }
 
     public function logFatalError($m)
@@ -572,6 +607,9 @@ class CronArchive
             return false;
         }
 
+        /**
+         * Trigger archiving for days
+         */
         try {
             $shouldProceed = $this->processArchiveDays($idSite, $lastTimestampWebsiteProcessedDay, $shouldArchivePeriods, $timerWebsite);
         } catch (UnexpectedWebsiteFoundException $e) {
@@ -588,11 +626,14 @@ class CronArchive
             $this->logger->info("Skipped website id $idSite periods processing, already done "
                 . $this->formatter->getPrettyTimeFromSeconds($elapsedSinceLastArchiving, true)
                 . " ago, " . $timerWebsite->__toString());
-            $this->skippedDayArchivesWebsites++;
+            $this->skippedPeriodsArchivesWebsite++;
             $this->skipped++;
             return false;
         }
 
+        /**
+         * Trigger archiving for non-day periods
+         */
         $success = $this->processArchiveForPeriods($idSite, $lastTimestampWebsiteProcessedPeriods);
 
         // Record succesful run of this website's periods archiving
@@ -744,6 +785,7 @@ class CronArchive
             }
 
             $this->logError("Empty or invalid response '$content' for website id $idSite, " . $timerWebsite->__toString() . ", skipping");
+            $this->skippedDayOnApiError++;
             $this->skipped++;
             return false;
         }
@@ -760,6 +802,7 @@ class CronArchive
             && !$shouldArchivePeriods
         ) {
             $this->logger->info("Skipped website id $idSite, no visit today, " . $timerWebsite->__toString());
+            $this->skippedDayNoRecentData++;
             $this->skipped++;
             return false;
         }
@@ -770,6 +813,7 @@ class CronArchive
         ) {
             $humanReadableDate = $this->formatReadableDateRange($date);
             $this->logger->info("Skipped website id $idSite, no visits in the $humanReadableDate days, " . $timerWebsite->__toString());
+            $this->skippedPeriodsNoDataInPeriod++;
             $this->skipped++;
             return false;
         }
@@ -1032,7 +1076,7 @@ class CronArchive
             $listSiteIds = implode(',', $siteIds);
 
             try {
-                $this->logger->info('Will invalidate archived reports for ' . $date . ' for following siteIds: ' . $listSiteIds);
+                $this->logger->info('Will invalidate archived reports for ' . $date . ' for following websites ids: ' . $listSiteIds);
                 $this->getApiToInvalidateArchivedReport()->invalidateArchivedReports($siteIds, $date);
             } catch (Exception $e) {
                 $this->logger->info('Failed to invalidate archived reports: ' . $e->getMessage());
@@ -1115,9 +1159,9 @@ class CronArchive
         $hasVisits = $dao->hasSiteVisitsBetweenTimeframe($from, $to, $idSite);
 
         if ($hasVisits) {
-            $this->logger->info("$idSite has visits between $from and $to");
+            $this->logger->info("- tracking data found for website id $idSite (between $from and $to)");
         } else {
-            $this->logger->info("$idSite has no visits between $from and $to");
+            $this->logger->info("- no new tracking data for website id $idSite (between $from and $to)");
         }
 
         return $hasVisits;
@@ -1389,15 +1433,11 @@ class CronArchive
             Piwik::postEvent('CronArchive.getIdSitesNotUsingTracker', array(&$this->idSitesNotUsingTracker));
 
             if (!empty($this->idSitesNotUsingTracker)) {
-                $this->logger->info("The following websites do not use the tracker: " . implode(',', $this->idSitesNotUsingTracker));
+                $this->logger->info("- The following websites do not use the tracker: " . implode(',', $this->idSitesNotUsingTracker));
             }
         }
 
         $isUsingTracker = !in_array($idSite, $this->idSitesNotUsingTracker);
-
-        if (!$isUsingTracker) {
-            $this->logger->info("The website $idSite is not using the tracker");
-        }
 
         return $isUsingTracker;
     }

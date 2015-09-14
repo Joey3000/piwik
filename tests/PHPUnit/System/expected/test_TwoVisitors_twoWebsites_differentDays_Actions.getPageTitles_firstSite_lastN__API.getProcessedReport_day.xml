@@ -171,51 +171,51 @@
 		<result prettyDate="Tuesday 5 January 2010">
 			<row>
 				
-				<idsubdatatable>17232</idsubdatatable>
+				<idsubdatatable>1990</idsubdatatable>
 			</row>
 			<row>
 				
-				<idsubdatatable>17231</idsubdatatable>
+				<idsubdatatable>1989</idsubdatatable>
 			</row>
 		</result>
 		<result prettyDate="Wednesday 6 January 2010">
 			<row>
 				
-				<idsubdatatable>17236</idsubdatatable>
+				<idsubdatatable>1994</idsubdatatable>
 			</row>
 			<row>
 				
-				<idsubdatatable>17235</idsubdatatable>
+				<idsubdatatable>1993</idsubdatatable>
 			</row>
 		</result>
 		<result prettyDate="Thursday 7 January 2010">
 			<row>
 				
-				<idsubdatatable>17240</idsubdatatable>
+				<idsubdatatable>1998</idsubdatatable>
 			</row>
 			<row>
 				
-				<idsubdatatable>17239</idsubdatatable>
+				<idsubdatatable>1997</idsubdatatable>
 			</row>
 		</result>
 		<result prettyDate="Friday 8 January 2010">
 			<row>
 				
-				<idsubdatatable>17244</idsubdatatable>
+				<idsubdatatable>2002</idsubdatatable>
 			</row>
 			<row>
 				
-				<idsubdatatable>17243</idsubdatatable>
+				<idsubdatatable>2001</idsubdatatable>
 			</row>
 		</result>
 		<result prettyDate="Saturday 9 January 2010">
 			<row>
 				
-				<idsubdatatable>17248</idsubdatatable>
+				<idsubdatatable>2006</idsubdatatable>
 			</row>
 			<row>
 				
-				<idsubdatatable>17247</idsubdatatable>
+				<idsubdatatable>2005</idsubdatatable>
 			</row>
 		</result>
 	</reportMetadata>
