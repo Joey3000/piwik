@@ -134,11 +134,15 @@ class SyncScreenshots extends ConsoleCommand
         $output->writeln('<comment>If all downloaded screenshots are valid you may push them with these commands:</comment>');
         $downloadToPath = $this->getDownloadToPath($repository);
         $commands = "
+
+# Starts here
 cd $downloadToPath
 git pull
 git add .
 git status
 git commit -m 'UI tests: ...' # Write a good commit message, eg. 'Fixed UI test failure caused by change introduced in X which caused failure by Y'
+echo -e \"\n--> Check the commit above is correct... <---\n\"
+sleep 7
 git push";
 
         if ($repository === 'piwik/piwik') {
@@ -148,6 +152,8 @@ git pull
 git add expected-ui-screenshots/
 git status
 git commit -m 'UI tests: ...' # Copy paste the good commit message
+echo -e \"\n--> Check the commit above is correct... <---\n\"
+sleep 7
 git push
 cd ../../";
         } else {

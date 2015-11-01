@@ -42,8 +42,8 @@ var isCorePlugin = function (pathToPlugin) {
 var Application = function () {
     this.runner = null;
 
-    var diffviewerDir = path.join(PIWIK_INCLUDE_PATH, 'tests/UI', config.screenshotDiffDir);
-    this.diffViewerGenerator = new DiffViewerGenerator(diffviewerDir);
+    this.diffviewerDir = path.join(PIWIK_INCLUDE_PATH, 'tests/UI', config.screenshotDiffDir);
+    this.diffViewerGenerator = new DiffViewerGenerator(this.diffviewerDir);
 };
 
 Application.prototype.printHelpAndExit = function () {
@@ -160,7 +160,7 @@ Application.prototype.loadTestModules = function () {
 
     // configure suites (auto-add fixture setup/teardown)
     mocha.suite.suites.forEach(function (suite) {
-        var fixture = typeof suite.fixture === 'undefined' ? 'UITestFixture' : suite.fixture;
+        var fixture = typeof suite.fixture === 'undefined' ? "Piwik\\Tests\\Fixtures\\UITestFixture" : suite.fixture;
 
         suite.beforeAll(function (done) {
             var oldOptions = JSON.parse(JSON.stringify(options));
@@ -229,7 +229,7 @@ Application.prototype.doRunTests = function () {
     this.runner = mocha.run(function () {
         // remove symlinks
         if (!options['keep-symlinks']) {
-            var symlinks = ['libs', 'plugins', 'tests', 'piwik.js'];
+            var symlinks = ['libs', 'plugins', 'tests', 'misc', 'piwik.js'];
 
             symlinks.forEach(function (item) {
                 var file = path.join(uiTestsDir, '..', 'PHPUnit', 'proxy', item);
@@ -257,6 +257,11 @@ Application.prototype.doRunTests = function () {
 
 Application.prototype.finish = function () {
     phantom.exit(this.runner ? this.runner.failures : -1);
+};
+
+Application.prototype.appendMissingExpected = function (screenName) {
+    var missingExpectedFilePath = path.join(this.diffviewerDir, 'missing-expected.list');
+    fs.write(missingExpectedFilePath, screenName + "\n", "a");
 };
 
 exports.Application = new Application();

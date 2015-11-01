@@ -44,6 +44,7 @@ schema = Mysql
 http_host   = localhost
 remote_addr = "127.0.0.1"
 request_uri = "@REQUEST_URI@"
+port =
 
 ; access key and secret as listed in AWS -> IAM -> Users
 aws_accesskey = ""
@@ -107,16 +108,8 @@ always_archive_data_range = 0;
 ; NOTE: you must also set [log] log_writers[] = "screen" to enable the profiler to print on screen
 enable_sql_profiler = 0
 
-; if set to > 0, a Piwik tracking code will be included in the Piwik UI footer and will track visits, pages, etc.
-; data will be stored for idSite = enable_measure_piwik_usage_in_idsite
-; this is useful for Piwik developers as an easy way to create data in their local Piwik
-enable_measure_piwik_usage_in_idsite = 0
-
 ; If set to 1, all requests to piwik.php will be forced to be 'new visitors'
 tracker_always_new_visitor = 0
-
-; Allow automatic upgrades to Beta or RC releases
-allow_upgrades_to_beta = 0
 
 ; if set to 1, all SQL queries will be logged using the DEBUG log level
 log_sql_queries = 0
@@ -135,6 +128,7 @@ enabled = 0
 
 ; if set to 1, javascript files will be included individually and neither merged nor minified.
 ; this option must be set to 1 when adding, removing or modifying javascript files
+; Note that for quick debugging, instead of using below setting, you can add `&disable_merged_assets=1` to the Piwik URL
 disable_merged_assets = 0
 
 [General]
@@ -160,9 +154,21 @@ enable_processing_unique_visitors_multiple_sites = 0
 enabled_periods_UI = "day,week,month,year,range"
 enabled_periods_API = "day,week,month,year,range"
 
+; whether to enable subquery cache for Custom Segment archiving queries
+enable_segments_subquery_cache = 0
+; Any segment subquery that matches more than segments_subquery_cache_limit IDs will not be cached,
+; and the original subquery executed instead.
+segments_subquery_cache_limit  = 100000
+; TTL: Time to live for cache files, in seconds. Default to 60 minutes
+segments_subquery_cache_ttl  = 3600
+
 ; when set to 1, all requests to Piwik will return a maintenance message without connecting to the DB
 ; this is useful when upgrading using the shell command, to prevent other users from accessing the UI while Upgrade is in progress
 maintenance_mode = 0
+
+; Defines the release channel that shall be used. Currently available values are:
+; "latest_stable", "latest_beta", "latest_2x_stable", "latest_2x_beta"
+release_channel = "latest_stable"
 
 ; character used to automatically create categories in the Actions > Pages, Outlinks and Downloads reports
 ; for example a URL like "example.com/blog/development/first-post" will create
@@ -476,7 +482,7 @@ enable_trusted_host_check = 1
 
 ; If you use this Piwik instance over multiple hostnames, Piwik will need to know
 ; a unique instance_id for this instance, so that Piwik can serve the right custom logo and tmp/* assets,
-; independantly of the hostname Piwik is currently running under.
+; independently of the hostname Piwik is currently running under.
 ; instance_id = stats.example.com
 
 ; The API server is an essential part of the Piwik infrastructure/ecosystem to
@@ -751,7 +757,6 @@ Plugins[] = VisitTime
 Plugins[] = VisitorInterest
 Plugins[] = ExampleAPI
 Plugins[] = ExampleRssWidget
-Plugins[] = Provider
 Plugins[] = Feedback
 Plugins[] = Monolog
 
@@ -772,8 +777,6 @@ Plugins[] = MobileMessaging
 Plugins[] = Overlay
 Plugins[] = SegmentEditor
 Plugins[] = Insights
-Plugins[] = ZenMode
-Plugins[] = LeftMenu
 Plugins[] = Morpheus
 Plugins[] = Contents
 Plugins[] = TestRunner

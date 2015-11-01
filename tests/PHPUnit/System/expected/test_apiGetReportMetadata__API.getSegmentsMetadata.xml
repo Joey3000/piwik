@@ -103,13 +103,6 @@
 	<row>
 		<type>dimension</type>
 		<category>Visit Location</category>
-		<name>Provider</name>
-		<segment>provider</segment>
-		<acceptedValues>comcast.net, proxad.net, etc.</acceptedValues>
-	</row>
-	<row>
-		<type>dimension</type>
-		<category>Visit Location</category>
 		<name>Region</name>
 		<segment>regionCode</segment>
 		<acceptedValues>01 02, OR, P8, etc.&lt;br/&gt;eg. region=A1;country=fr</acceptedValues>
@@ -218,17 +211,17 @@
 	<row>
 		<type>dimension</type>
 		<category>Visit</category>
-		<name>Visitor ID</name>
-		<segment>visitorId</segment>
-		<acceptedValues>34c31e04394bdc63 - any 16 Hexadecimal chars ID, which can be fetched using the Tracking API function getVisitorId()</acceptedValues>
-		<permission>1</permission>
+		<name>Visit type</name>
+		<segment>visitorType</segment>
+		<acceptedValues>new, returning, returningCustomer. For example, to select all visitors who have returned to the website, including those who have bought something in their previous visits, the API request would contain &quot;&amp;segment=visitorType==returning,visitorType==returningCustomer&quot;</acceptedValues>
 	</row>
 	<row>
 		<type>dimension</type>
 		<category>Visit</category>
-		<name>Visitor type</name>
-		<segment>visitorType</segment>
-		<acceptedValues>new, returning, returningCustomer. For example, to select all visitors who have returned to the website, including those who have bought something in their previous visits, the API request would contain &quot;&amp;segment=visitorType==returning,visitorType==returningCustomer&quot;</acceptedValues>
+		<name>Visitor ID</name>
+		<segment>visitorId</segment>
+		<acceptedValues>34c31e04394bdc63 - any 16 Hexadecimal chars ID, which can be fetched using the Tracking API function getVisitorId()</acceptedValues>
+		<permission>1</permission>
 	</row>
 	<row>
 		<type>dimension</type>
@@ -279,6 +272,12 @@
 	<row>
 		<type>dimension</type>
 		<category>Custom Variables</category>
+		<name>Custom Variable name (scope visit)</name>
+		<segment>customVariableName</segment>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Custom Variables</category>
 		<name>Custom Variable name 1 (scope visit)</name>
 		<segment>customVariableName1</segment>
 	</row>
@@ -305,6 +304,12 @@
 		<category>Custom Variables</category>
 		<name>Custom Variable name 5 (scope visit)</name>
 		<segment>customVariableName5</segment>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Custom Variables</category>
+		<name>Custom Variable name (scope page)</name>
+		<segment>customVariablePageName</segment>
 	</row>
 	<row>
 		<type>dimension</type>
@@ -339,6 +344,12 @@
 	<row>
 		<type>dimension</type>
 		<category>Custom Variables</category>
+		<name>Custom Variable value (scope page)</name>
+		<segment>customVariablePageValue</segment>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Custom Variables</category>
 		<name>Custom Variable value 1 (scope page)</name>
 		<segment>customVariablePageValue1</segment>
 	</row>
@@ -365,6 +376,12 @@
 		<category>Custom Variables</category>
 		<name>Custom Variable value 5 (scope page)</name>
 		<segment>customVariablePageValue5</segment>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Custom Variables</category>
+		<name>Custom Variable value (scope visit)</name>
+		<segment>customVariableValue</segment>
 	</row>
 	<row>
 		<type>dimension</type>
@@ -399,6 +416,12 @@
 	<row>
 		<type>dimension</type>
 		<category>Actions</category>
+		<name>Clicked URL</name>
+		<segment>outlinkUrl</segment>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Actions</category>
 		<name>Content Name</name>
 		<segment>contentName</segment>
 		<acceptedValues>The name of a content block, for instance &quot;Ad Sale&quot;</acceptedValues>
@@ -416,6 +439,12 @@
 		<name>Content Target</name>
 		<segment>contentTarget</segment>
 		<acceptedValues>For instance the URL of a landing page: &quot;http://landingpage.example.com&quot;</acceptedValues>
+	</row>
+	<row>
+		<type>dimension</type>
+		<category>Actions</category>
+		<name>Download URL</name>
+		<segment>downloadUrl</segment>
 	</row>
 	<row>
 		<type>dimension</type>

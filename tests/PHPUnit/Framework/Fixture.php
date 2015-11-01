@@ -10,6 +10,7 @@ namespace Piwik\Tests\Framework;
 use Piwik\Access;
 use Piwik\Application\Environment;
 use Piwik\Archive;
+use Piwik\ArchiveProcessor\PluginsArchiver;
 use Piwik\Auth;
 use Piwik\Cache\Backend\File;
 use Piwik\Cache as PiwikCache;
@@ -106,6 +107,7 @@ class Fixture extends \PHPUnit_Framework_Assert
 
     public $testCaseClass = false;
     public $extraPluginsToLoad = array();
+    public $extraDiEnvironments = array();
 
     public $testEnvironment = null;
 
@@ -138,6 +140,11 @@ class Fixture extends \PHPUnit_Framework_Assert
         }
 
         return 'python';
+    }
+
+    public static function getTestRootUrl()
+    {
+        return self::getRootUrl() . 'tests/PHPUnit/proxy/';
     }
 
     public function loginAsSuperUser()
@@ -195,6 +202,7 @@ class Fixture extends \PHPUnit_Framework_Assert
         $testEnv->testCaseClass = $this->testCaseClass;
         $testEnv->fixtureClass = get_class($this);
         $testEnv->dbName = $this->dbName;
+        $testEnv->extraDiEnvironments = $this->extraDiEnvironments;
 
         foreach ($this->extraTestEnvVars as $name => $value) {
             $testEnv->$name = $value;
@@ -276,7 +284,7 @@ class Fixture extends \PHPUnit_Framework_Assert
             APILanguageManager::getInstance()->setLanguageForUser('superUserLogin', 'en');
         }
 
-        SettingsPiwik::overwritePiwikUrl(self::getRootUrl() . 'tests/PHPUnit/proxy/');
+        SettingsPiwik::overwritePiwikUrl(self::getTestRootUrl());
 
         if ($setupEnvironmentOnly) {
             return;
@@ -349,9 +357,11 @@ class Fixture extends \PHPUnit_Framework_Assert
         Cache::deleteTrackerCache();
         PiwikCache::getTransientCache()->flushAll();
         PiwikCache::getEagerCache()->flushAll();
+        PiwikCache::getLazyCache()->flushAll();
         ArchiveTableCreator::clear();
         \Piwik\Plugins\ScheduledReports\API::$cache = array();
         Singleton::clearAll();
+        PluginsArchiver::$archivers = array();
 
         $_GET = $_REQUEST = array();
         Translate::reset();
@@ -465,9 +475,14 @@ class Fixture extends \PHPUnit_Framework_Assert
     {
         $piwikUrl = Config::getInstance()->tests['http_host'];
         $piwikUri = Config::getInstance()->tests['request_uri'];
+        $piwikPort = Config::getInstance()->tests['port'];
 
         if($piwikUri == '@REQUEST_URI@') {
             throw new Exception("Piwik is mis-configured. Remove (or fix) the 'request_uri' entry below [tests] section in your config.ini.php. ");
+        }
+
+        if (!empty($piwikPort)) {
+            $piwikUrl = $piwikUrl . ':' . $piwikPort;
         }
 
         if (strpos($piwikUrl, 'http://') !== 0) {
@@ -505,7 +520,7 @@ class Fixture extends \PHPUnit_Framework_Assert
      */
     public static function getTrackerUrl()
     {
-        return self::getRootUrl() . 'tests/PHPUnit/proxy/piwik.php';
+        return self::getTestRootUrl() . 'piwik.php';
     }
 
     /**
@@ -769,6 +784,10 @@ class Fixture extends \PHPUnit_Framework_Assert
         echo "Geoip database $outfileName is not found. Downloading from $url...\n";
 
         $dump = fopen($url, 'rb');
+        if($dump === false){
+            throw new Exception('Could not download Geoip database from ' . $url);
+        }
+        
         $outfile = fopen($outfileName, 'wb');
         if(!$outfile) {
             throw new Exception("Failed to create file $outfileName - please check permissions");
@@ -808,7 +827,7 @@ class Fixture extends \PHPUnit_Framework_Assert
         $cmd = $python
             . ' "' . PIWIK_INCLUDE_PATH . '/misc/log-analytics/import_logs.py" ' # script loc
             . '-ddd ' // debug
-            . '--url="' . self::getRootUrl() . 'tests/PHPUnit/proxy/" ' # proxy so that piwik uses test config files
+            . '--url="' . self::getTestRootUrl() . '" ' # proxy so that piwik uses test config files
         ;
 
         foreach ($options as $name => $values) {

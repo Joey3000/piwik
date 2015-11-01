@@ -9,7 +9,10 @@
 namespace Piwik\Tests\Integration;
 
 use Exception;
+use Piwik\Cache;
 use Piwik\Common;
+use Piwik\Config;
+use Piwik\Container\StaticContainer;
 use Piwik\Db;
 use Piwik\Segment;
 use Piwik\Tests\Framework\Mock\FakeAccess;
@@ -19,21 +22,18 @@ use Piwik\Tracker\TableLogAction;
 
 /**
  * @group Core
- * @group SegmentTest
+ * @group Segment
  */
 class SegmentTest extends IntegrationTestCase
 {
+    public $tableLogActionCacheHits = 0;
+
     public function setUp()
     {
         parent::setUp();
 
         // setup the access layer (required in Segment contrustor testing if anonymous is allowed to use segments)
         FakeAccess::$superUser = true;
-    }
-
-    public function tearDown()
-    {
-        parent::tearDown();
     }
 
     static public function removeExtraWhiteSpaces($valueToFilter)
@@ -92,6 +92,15 @@ class SegmentTest extends IntegrationTestCase
                 'bind'  => array('ff')
             )),
 
+            // test multiple column segments
+            array('customVariableName==abc;customVariableValue==def', array(
+                'where' => ' ((log_visit.custom_var_k1 = ?) OR (log_visit.custom_var_k2 = ?) OR (log_visit.custom_var_k3 = ?) OR (log_visit.custom_var_k4 = ?) OR (log_visit.custom_var_k5 = ?))'
+                         . ' AND ((log_visit.custom_var_v1 = ?) OR (log_visit.custom_var_v2 = ?) OR (log_visit.custom_var_v3 = ?) OR (log_visit.custom_var_v4 = ?) OR (log_visit.custom_var_v5 = ?)) ',
+                'bind' => array(
+                    'abc', 'abc', 'abc', 'abc', 'abc',
+                    'def', 'def', 'def', 'def', 'def',
+                ),
+            )),
         );
     }
 
@@ -627,10 +636,12 @@ class SegmentTest extends IntegrationTestCase
         $this->assertEquals($this->removeExtraWhiteSpaces($expected), $this->removeExtraWhiteSpaces($query));
     }
 
-    public function test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND()
+    public function test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withoutCache()
     {
-        $pageUrlFoundInDb = 'example.com/found-in-db';
-        $actionIdFoundInDb = $this->insertPageUrlAsAction($pageUrlFoundInDb);
+        $this->disableSubqueryCache();
+        $this->assertCacheWasHit($hit = 0);
+
+        list($pageUrlFoundInDb, $actionIdFoundInDb) = $this->insertActions();
 
         $select = 'log_visit.*';
         $from = 'log_visit';
@@ -641,9 +652,12 @@ class SegmentTest extends IntegrationTestCase
          * pageUrl==xyz                              -- Matches none
          * pageUrl!=abcdefg                          -- Matches all
          * pageUrl=@does-not-exist                   -- Matches none
+         * pageUrl=@found-in-db                      -- Matches all
          * pageUrl=='.urlencode($pageUrlFoundInDb)   -- Matches one
+         * pageUrl!@not-found                        -- matches all
+         * pageUrl!@found                            -- Matches none
          */
-        $segment = 'visitServerHour==12,pageUrl==xyz;pageUrl!=abcdefg,pageUrl=@does-not-exist,pageUrl=='.urlencode($pageUrlFoundInDb);
+        $segment = 'visitServerHour==12,pageUrl==xyz;pageUrl!=abcdefg,pageUrl=@does-not-exist,pageUrl=@found-in-db,pageUrl=='.urlencode($pageUrlFoundInDb).',pageUrl!@not-found,pageUrl!@found';
         $segment = new Segment($segment, $idSites = array());
 
         $query = $segment->getSelectQuery($select, $from, $where, $bind);
@@ -660,27 +674,182 @@ class SegmentTest extends IntegrationTestCase
                     " . Common::prefixTable('log_visit') . " AS log_visit
                     LEFT JOIN " . Common::prefixTable('log_link_visit_action') . " AS log_link_visit_action ON log_link_visit_action.idvisit = log_visit.idvisit
                 WHERE (HOUR(log_visit.visit_last_action_time) = ?
-                        OR (1 = 0))
-                      AND ((1 = 1)
-                        OR ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name LIKE CONCAT('%', ?, '%') AND type = 1 )) )
-                        OR   log_link_visit_action.idaction_url = ? )
+                        OR (1 = 0)) " . // pageUrl==xyz
+                    "AND ((1 = 1) " . // pageUrl!=abcdefg
+                    "    OR ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name LIKE CONCAT('%', ?, '%') AND type = 1 )) ) " . // pageUrl=@does-not-exist
+                    "    OR ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name LIKE CONCAT('%', ?, '%') AND type = 1 )) )" . // pageUrl=@found-in-db
+                    "    OR   log_link_visit_action.idaction_url = ?" . // pageUrl=='.urlencode($pageUrlFoundInDb)
+                    "    OR ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name NOT LIKE CONCAT('%', ?, '%') AND type = 1 )) )" . // pageUrl!@not-found
+                    "    OR ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name NOT LIKE CONCAT('%', ?, '%') AND type = 1 )) )" . // pageUrl!@found
+                    " )
                 GROUP BY log_visit.idvisit
                 ORDER BY NULL
                     ) AS log_inner",
             "bind" => array(
                 12,
                 "does-not-exist",
-                $actionIdFoundInDb
+                "found-in-db",
+                $actionIdFoundInDb,
+                "not-found",
+                "found",
             ));
+
+        $cache = StaticContainer::get('Piwik\Tracker\TableLogAction\Cache');
+        $this->assertTrue( empty($cache->isEnabled) );
+        $this->assertCacheWasHit($hit = 0);
+        $this->assertEquals($this->removeExtraWhiteSpaces($expected), $this->removeExtraWhiteSpaces($query));
+    }
+
+    public function test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withCacheSave()
+    {
+        $this->enableSubqueryCache();
+
+        list($pageUrlFoundInDb, $actionIdFoundInDb) = $this->insertActions();
+        $select = 'log_visit.*';
+        $from = 'log_visit';
+        $where = false;
+        $bind = array();
+
+        /**
+         * pageUrl==xyz                              -- Matches none
+         * pageUrl!=abcdefg                          -- Matches all
+         * pageUrl=@does-not-exist                   -- Matches none
+         * pageUrl=@found-in-db                      -- Matches all
+         * pageUrl=='.urlencode($pageUrlFoundInDb)   -- Matches one
+         * pageUrl!@not-found                        -- matches all
+         * pageUrl!@found                            -- Matches none
+         */
+        $segment = 'visitServerHour==12,pageUrl==xyz;pageUrl!=abcdefg,pageUrl=@does-not-exist,pageUrl=@found-in-db,pageUrl=='.urlencode($pageUrlFoundInDb).',pageUrl!@not-found,pageUrl!@found';
+        $segment = new Segment($segment, $idSites = array());
+
+        $query = $segment->getSelectQuery($select, $from, $where, $bind);
+
+        $expected = array(
+            "sql"  => "
+                SELECT
+                    log_inner.*
+                FROM
+                    (
+                SELECT
+                    log_visit.*
+                FROM
+                    " . Common::prefixTable('log_visit') . " AS log_visit
+                    LEFT JOIN " . Common::prefixTable('log_link_visit_action') . " AS log_link_visit_action ON log_link_visit_action.idvisit = log_visit.idvisit
+                WHERE (HOUR(log_visit.visit_last_action_time) = ?
+                        OR (1 = 0))" . // pageUrl==xyz
+                "
+                      AND ((1 = 1) " . // pageUrl!=abcdefg
+                "
+                        OR (1 = 0) " . // pageUrl=@does-not-exist
+                "
+                        OR ( log_link_visit_action.idaction_url IN (?,?,?) )" . // pageUrl=@found-in-db
+                "
+                        OR   log_link_visit_action.idaction_url = ?" . // pageUrl=='.urlencode($pageUrlFoundInDb)
+                "
+                        OR ( log_link_visit_action.idaction_url IN (?,?,?) )" . // pageUrl!@not-found
+                "
+                        OR (1 = 0) " . // pageUrl!@found
+                ")
+                GROUP BY log_visit.idvisit
+                ORDER BY NULL
+                    ) AS log_inner",
+            "bind" => array(
+                12,
+                1, // pageUrl=@found-in-db
+                2, // pageUrl=@found-in-db
+                3, // pageUrl=@found-in-db
+                $actionIdFoundInDb, // pageUrl=='.urlencode($pageUrlFoundInDb)
+                1, // pageUrl!@not-found
+                2, // pageUrl!@not-found
+                3, // pageUrl!@not-found
+            ));
+
+        $cache = StaticContainer::get('Piwik\Tracker\TableLogAction\Cache');
+        $this->assertTrue( !empty($cache->isEnabled) );
 
         $this->assertEquals($this->removeExtraWhiteSpaces($expected), $this->removeExtraWhiteSpaces($query));
     }
 
-    public function provideContainerConfig()
+    public function test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withCacheisHit()
     {
-        return array(
-            'Piwik\Access' => new FakeAccess()
-        );
+        $this->enableSubqueryCache();
+        $this->assertCacheWasHit($hits = 0);
+
+        $this->test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withCacheSave();
+        $this->assertCacheWasHit($hits = 0);
+
+        $this->test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withCacheSave();
+        $this->assertCacheWasHit($hits = 4);
+
+        $this->test_getSelectQuery_whenPageUrlDoesNotExist_asBothStatements_OR_AND_withCacheSave();
+        $this->assertCacheWasHit($hits = 4 + 4);
+
+    }
+
+
+    public function test_getSelectQuery_withTwoSegments_subqueryNotCached_whenResultsetTooLarge()
+    {
+        $this->enableSubqueryCache();
+
+        // do not cache when more than 3 idactions returned by subquery
+        Config::getInstance()->General['segments_subquery_cache_limit'] = 2;
+
+        list($pageUrlFoundInDb, $actionIdFoundInDb) = $this->insertActions();
+        $select = 'log_visit.*';
+        $from = 'log_visit';
+        $where = false;
+        $bind = array();
+
+        /**
+         * pageUrl=@found-in-db-bis                  -- Will be cached
+         * pageUrl!@not-found                        -- Too big to cache
+         */
+        $segment = 'pageUrl=@found-in-db-bis;pageUrl!@not-found';
+        $segment = new Segment($segment, $idSites = array());
+
+        $query = $segment->getSelectQuery($select, $from, $where, $bind);
+
+        $expected = array(
+            "sql"  => "
+                SELECT
+                    log_inner.*
+                FROM
+                    (
+                SELECT
+                    log_visit.*
+                FROM
+                    " . Common::prefixTable('log_visit') . " AS log_visit
+                    LEFT JOIN " . Common::prefixTable('log_link_visit_action') . " AS log_link_visit_action ON log_link_visit_action.idvisit = log_visit.idvisit
+                WHERE
+                           ( log_link_visit_action.idaction_url IN (?) )" . // pageUrl=@found-in-db-bis
+                "
+                        AND ( log_link_visit_action.idaction_url IN (SELECT idaction FROM log_action WHERE ( name NOT LIKE CONCAT('%', ?, '%') AND type = 1 )) ) " . // pageUrl!@not-found
+                "GROUP BY log_visit.idvisit
+                ORDER BY NULL
+                    ) AS log_inner",
+            "bind" => array(
+                2, // pageUrl=@found-in-db-bis
+                "not-found", // pageUrl!@not-found
+            ));
+
+        $cache = StaticContainer::get('Piwik\Tracker\TableLogAction\Cache');
+        $this->assertTrue( !empty($cache->isEnabled) );
+
+        $this->assertEquals($this->removeExtraWhiteSpaces($expected), $this->removeExtraWhiteSpaces($query));
+    }
+
+
+    public function test_getSelectQuery_withTwoSegments_partiallyCached()
+    {
+        $this->assertCacheWasHit($hits = 0);
+
+        // this will create the caches for both segments
+        $this->test_getSelectQuery_withTwoSegments_subqueryNotCached_whenResultsetTooLarge();
+        $this->assertCacheWasHit($hits = 0);
+
+        // this will hit caches for both segments
+        $this->test_getSelectQuery_withTwoSegments_subqueryNotCached_whenResultsetTooLarge();
+        $this->assertCacheWasHit($hits = 2);
     }
 
     /**
@@ -697,5 +866,76 @@ class SegmentTest extends IntegrationTestCase
         $actionIdFoundInDb = Db::fetchOne("SELECT idaction from " . Common::prefixTable('log_action') . " WHERE name = ?", $pageUrlFoundInDb);
         $this->assertNotEmpty($actionIdFoundInDb, "Action $pageUrlFoundInDb was not found in the " . Common::prefixTable('log_action') . " table.");
         return $actionIdFoundInDb;
+    }
+
+    /**
+     * @return array
+     */
+    private function insertActions()
+    {
+        $pageUrlFoundInDb = 'example.com/found-in-db';
+        $actionIdFoundInDb = $this->insertPageUrlAsAction($pageUrlFoundInDb);
+
+        // Adding some other actions to make test case more realistic
+        $this->insertPageUrlAsAction('example.net/found-in-db-bis');
+        $this->insertPageUrlAsAction('example.net/found-in-db-ter');
+
+        return array($pageUrlFoundInDb, $actionIdFoundInDb);
+    }
+
+    private function assertCacheWasHit($expectedHits)
+    {
+        $hits = $this->tableLogActionCacheHits;
+        $this->assertEquals($expectedHits, $hits,
+            "expected cache was hit $expectedHits time(s), but got $hits cache hits instead.");
+    }
+
+    private function disableSubqueryCache()
+    {
+        Config::getInstance()->General['enable_segments_subquery_cache'] = 0;
+    }
+
+    private function enableSubqueryCache()
+    {
+        Config::getInstance()->General['enable_segments_subquery_cache'] = 1;
+    }
+
+    public function provideContainerConfig()
+    {
+        $self = $this;
+
+        $cacheProxy = $this->getMock('Piwik\Cache\Lazy', array('fetch', 'contains', 'save', 'delete', 'flushAll'),
+            array(), '', $callOriginalConstructor = false);
+        $cacheProxy->expects($this->any())->method('fetch')->willReturnCallback(function ($id) {
+            $realCache = StaticContainer::get('Piwik\Cache\Lazy');
+            return $realCache->fetch($id);
+        });
+        $cacheProxy->expects($this->any())->method('contains')->willReturnCallback(function ($id) use ($self) {
+            $realCache = StaticContainer::get('Piwik\Cache\Lazy');
+
+            $result = $realCache->contains($id);
+            if ($result) {
+                ++$self->tableLogActionCacheHits;
+            }
+
+            return $result;
+        });
+        $cacheProxy->expects($this->any())->method('save')->willReturnCallback(function ($id, $data, $lifetime = 0) {
+            $realCache = StaticContainer::get('Piwik\Cache\Lazy');
+            return $realCache->save($id, $data, $lifetime);
+        });
+        $cacheProxy->expects($this->any())->method('delete')->willReturnCallback(function ($id) {
+            $realCache = StaticContainer::get('Piwik\Cache\Lazy');
+            return $realCache->delete($id);
+        });
+        $cacheProxy->expects($this->any())->method('flushAll')->willReturnCallback(function () {
+            $realCache = StaticContainer::get('Piwik\Cache\Lazy');
+            return $realCache->flushAll();
+        });
+
+        return array(
+            'Piwik\Access' => new FakeAccess(),
+            'Piwik\Tracker\TableLogAction\Cache' => \DI\object()->constructorParameter('cache', $cacheProxy),
+        );
     }
 }

@@ -9,6 +9,7 @@
 namespace Piwik\Plugins\UsersManager;
 
 use Exception;
+use Piwik\API\Request;
 use Piwik\API\ResponseBuilder;
 use Piwik\Common;
 use Piwik\Container\StaticContainer;
@@ -70,7 +71,7 @@ class Controller extends ControllerAdmin
         } else {
             $defaultReportSiteName = Site::getNameFor($idSiteSelected);
             try {
-                $usersAccessByWebsite = APIUsersManager::getInstance()->getUsersAccessFromSite($idSiteSelected);
+                $usersAccessByWebsite = Request::processRequest('UsersManager.getUsersAccessFromSite', array('idSite' => $idSiteSelected));
             } catch (NoAccessException $e) {
                 return $this->noAdminAccessToWebsite($idSiteSelected, $defaultReportSiteName, $e->getMessage());
             }
@@ -259,6 +260,7 @@ class Controller extends ControllerAdmin
 
         $view->languages = APILanguagesManager::getInstance()->getAvailableLanguageNames();
         $view->currentLanguageCode = LanguagesManager::getLanguageCodeForCurrentUser();
+        $view->currentTimeformat = LanguagesManager::uses12HourClockForCurrentUser();
         $view->ignoreCookieSet = IgnoreCookie::isIgnoreCookieFound();
         $view->piwikHost = Url::getCurrentHost();
         $this->setBasicVariablesView($view);
@@ -379,12 +381,14 @@ class Controller extends ControllerAdmin
             $defaultReport = Common::getRequestVar('defaultReport');
             $defaultDate = Common::getRequestVar('defaultDate');
             $language = Common::getRequestVar('language');
+            $timeFormat = Common::getRequestVar('timeformat');
             $userLogin = Piwik::getCurrentUserLogin();
 
             $this->processPasswordChange($userLogin);
 
             LanguagesManager::setLanguageForSession($language);
             APILanguagesManager::getInstance()->setLanguageForUser($userLogin, $language);
+            APILanguagesManager::getInstance()->set12HourClockForUser($userLogin, $timeFormat);
 
             APIUsersManager::getInstance()->setUserPreference($userLogin,
                 APIUsersManager::PREFERENCE_DEFAULT_REPORT,

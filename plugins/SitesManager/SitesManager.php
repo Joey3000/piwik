@@ -10,6 +10,7 @@ namespace Piwik\Plugins\SitesManager;
 
 use Piwik\Common;
 use Piwik\Archive\ArchiveInvalidator;
+use Piwik\Container\StaticContainer;
 use Piwik\Db;
 use Piwik\Plugins\PrivacyManager\PrivacyManager;
 use Piwik\Measurable\Settings\Storage;
@@ -69,7 +70,7 @@ class SitesManager extends \Piwik\Plugin
         // we do not delete logs here on purpose (you can run these queries on the log_ tables to delete all data)
         Cache::deleteCacheWebsiteAttributes($idSite);
 
-        $archiveInvalidator = new ArchiveInvalidator();
+        $archiveInvalidator = StaticContainer::get('Piwik\Archive\ArchiveInvalidator');
         $archiveInvalidator->forgetRememberedArchivedReportsToInvalidateForSite($idSite);
 
         $measurableStorage = new Storage(Db::get(), $idSite);
@@ -126,6 +127,7 @@ class SitesManager extends \Piwik\Plugin
         $array['sitesearch_keyword_parameters'] = $this->getTrackerSearchKeywordParameters($website);
         $array['sitesearch_category_parameters'] = $this->getTrackerSearchCategoryParameters($website);
         $array['timezone'] = $this->getTimezoneFromWebsite($website);
+        $array['ts_created'] = $website['ts_created'];
     }
 
     /**

@@ -83,6 +83,13 @@ class Request
                 $this->params['url'] = $url;
             }
         }
+
+        // check for 4byte utf8 characters in url and replace them with �
+        // @TODO Remove as soon as our database tables use utf8mb4 instead of utf8
+        if (array_key_exists('url', $this->params) && preg_match('/[\x{10000}-\x{10FFFF}]/u', $this->params['url'])) {
+            Common::printDebug("Unsupport character detected. Replacing with \xEF\xBF\xBD");
+            $this->params['url'] = preg_replace('/[\x{10000}-\x{10FFFF}]/u', "\xEF\xBF\xBD", $this->params['url']);
+        }
     }
 
     /**
@@ -385,6 +392,12 @@ class Request
         }
 
         return $this->paramsCache[$name];
+    }
+
+    public function setParam($name, $value)
+    {
+        $this->params[$name] = $value;
+        unset($this->paramsCache[$name]);
     }
 
     private function hasParam($name)
